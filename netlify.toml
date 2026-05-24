@@ -1,11 +1,6 @@
 [build]
   command = "npm run build"
-  publish = ".netlify/v1/functions"
+  publish = "build"
 
 [build.environment]
   NODE_VERSION = "20"
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/handler"
-  status = 200
