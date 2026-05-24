@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npx sv *)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p \"/Users/mamanche/Documents/Tools/Travel Budget/src/lib/server\" \\\\ *)",
+      "Bash(cp .env.example .env)",
+      "Bash(echo 'PUBLIC_SUPABASE_URL=https://placeholder.supabase.co *)",
+      "Bash(npm run *)",
+      "Bash(mkdir -p \"/Users/mamanche/Documents/Tools/Travel Budget/src/routes/api/trips/[tripId]/members/[memberId]\" && echo \"ok\")",
+      "Bash(xargs cat)"
+    ],
+    "additionalDirectories": [
+      "/Users/mamanche/Documents/Tools/Travel Budget/src/routes/trips",
+      "/Users/mamanche/Documents/Tools/Travel Budget/src/routes/trips/[tripId]",
+      "/Users/mamanche/Documents/Tools/Travel Budget/src/routes/api/trips/[tripId]/members"
+    ]
+  }
+}
