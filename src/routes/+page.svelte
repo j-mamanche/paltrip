@@ -51,7 +51,8 @@
   }
 
   let error = $state('');
-  let lastTrip = $state<{ id: string; name: string } | null>(null);
+  let lastTrip = $state<{ id: string; name: string; status: 'pending' | 'active' } | null>(null);
+  let resolvedStatus = $state<'active' | 'pending' | 'newly_approved' | null>(null);
 
   // ── Calculadora ───────────────────────────────────────────────────────────
   type CalcMode = 'equal' | 'weighted' | 'itemized';
@@ -236,7 +237,7 @@
     return calcPeople.map(p => ({ id: p.id, name: p.name, amount: totals[p.id] }));
   });
 
-  onMount(() => {
+  onMount(async () => {
     const joinCode = new URLSearchParams(window.location.search).get('join');
     if (joinCode) {
       const knownTripId = localStorage.getItem(`pal_token_${joinCode}`);
@@ -250,9 +251,31 @@
       return;
     }
     const raw = localStorage.getItem('pal_last_trip');
-    if (raw) {
-      try { lastTrip = JSON.parse(raw); } catch { /* noop */ }
+    if (!raw) return;
+    try { lastTrip = JSON.parse(raw); } catch { return; }
+
+    if (!lastTrip || lastTrip.status === 'active') {
+      resolvedStatus = lastTrip ? 'active' : null;
+      return;
     }
+
+    // status === 'pending': verificar si fue aprobado en el servidor
+    const memberId = localStorage.getItem(`trip_${lastTrip.id}_user`);
+    if (!memberId) return;
+    try {
+      const res = await fetch(`/api/trips/${lastTrip.id}/member-status`, {
+        headers: { 'X-Member-Id': memberId }
+      });
+      if (res.ok) {
+        const { status } = await res.json();
+        if (status === 'active') {
+          resolvedStatus = 'newly_approved';
+          localStorage.setItem('pal_last_trip', JSON.stringify({ ...lastTrip, status: 'active' }));
+        } else {
+          resolvedStatus = 'pending';
+        }
+      }
+    } catch { resolvedStatus = 'pending'; }
   });
 
   // ── Shared helpers ────────────────────────────────────────────────────────
@@ -292,7 +315,7 @@
       if (!res.ok) throw new Error((await res.json()).message ?? await res.text());
       const { trip, member } = await res.json();
       localStorage.setItem(`trip_${trip.id}_user`, member.id);
-      localStorage.setItem('pal_last_trip', JSON.stringify({ id: trip.id, name: trip.name }));
+      localStorage.setItem('pal_last_trip', JSON.stringify({ id: trip.id, name: trip.name, status: 'active' }));
       localStorage.setItem(`pal_token_${trip.access_token}`, trip.id);
       goto(`/trips/${trip.id}`);
     } catch (e: unknown) {
@@ -311,7 +334,7 @@
       if (!res.ok) throw new Error((await res.json()).message ?? await res.text());
       const { trip, member } = await res.json();
       localStorage.setItem(`trip_${trip.id}_user`, member.id);
-      localStorage.setItem('pal_last_trip', JSON.stringify({ id: trip.id, name: trip.name }));
+      localStorage.setItem('pal_last_trip', JSON.stringify({ id: trip.id, name: trip.name, status: 'pending' }));
       localStorage.setItem(`pal_token_${accessToken.trim()}`, trip.id);
       goto(`/trips/${trip.id}`);
     } catch (e: unknown) {
@@ -324,7 +347,7 @@
   <div class="w-full max-w-sm space-y-8">
 
     <div class="text-center space-y-2">
-      <h1 class="font-display font-bold text-5xl tracking-tight text-stone-50">Pa'l</h1>
+      <h1 class="font-display font-bold text-5xl tracking-tight text-stone-50">Pa'l Trip</h1>
       <p class="text-stone-500 text-sm">Pa'l Trip y Pa'l Gasto.</p>
     </div>
 
@@ -332,7 +355,7 @@
       <div class="bg-red-950 border border-red-800/60 text-red-300 text-sm px-4 py-3 rounded-xl">{error}</div>
     {/if}
 
-    {#if lastTrip}
+    {#if resolvedStatus === 'active' && lastTrip}
       <a href="/trips/{lastTrip.id}"
          class="flex items-center gap-3 px-4 py-3 rounded-2xl bg-brand-950/50 border border-brand-800/60
                 text-stone-200 hover:bg-brand-900/50 transition-colors duration-150 group">
@@ -343,6 +366,25 @@
         </div>
         <span class="text-stone-600 group-hover:text-brand-400 transition-colors">→</span>
       </a>
+    {:else if resolvedStatus === 'newly_approved' && lastTrip}
+      <a href="/trips/{lastTrip.id}"
+         class="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-950/60 border border-emerald-700/60
+                text-stone-200 hover:bg-emerald-900/50 transition-colors duration-150 group">
+        <span class="text-xl">🎉</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-emerald-400 font-medium">¡Solicitud aceptada!</p>
+          <p class="text-sm font-semibold font-display truncate">Unirse a {lastTrip.name}</p>
+        </div>
+        <span class="text-stone-600 group-hover:text-emerald-400 transition-colors">→</span>
+      </a>
+    {:else if resolvedStatus === 'pending' && lastTrip}
+      <div class="flex items-center gap-3 px-4 py-3 rounded-2xl bg-stone-800/60 border border-stone-700/60 text-stone-400">
+        <span class="text-xl">⏳</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-stone-500">Solicitud en curso</p>
+          <p class="text-sm font-semibold font-display truncate text-stone-300">{lastTrip.name}</p>
+        </div>
+      </div>
     {/if}
 
     <div class="space-y-3">
@@ -474,7 +516,7 @@
                             type="number" min="1" step="0.25"
                             value={p.weight}
                             oninput={(e) => calcSetWeight(p.id, Math.max(1, parseFloat((e.target as HTMLInputElement).value) || 1))}
-                            class="input w-16 py-1 text-sm text-center tabular-nums"
+                            class="input w-12 py-1 text-sm text-center tabular-nums"
                           />
                           <span class="text-stone-500 text-xs">×</span>
                         </div>

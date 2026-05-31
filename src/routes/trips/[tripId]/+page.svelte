@@ -105,7 +105,8 @@
     expPaidBy = currentUserId ?? data.members[0]?.id ?? '';
     expParticipants = data.members.map((m) => m.id);
     expCurrency = data.trip.currency;
-    localStorage.setItem('pal_last_trip', JSON.stringify({ id: data.trip.id, name: data.trip.name }));
+    const memberStatus = data.members.find((m) => m.id === currentUserId)?.status ?? 'active';
+    localStorage.setItem('pal_last_trip', JSON.stringify({ id: data.trip.id, name: data.trip.name, status: memberStatus }));
   });
 
   async function onExpCurrencyChange(newCurrency: string) {
