@@ -1,0 +1,12 @@
+{
+  "name": "Pa'l Trip",
+  "short_name": "Pa'l Trip",
+  "description": "Organiza y divide gastos de grupo cuando viajas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1917",
+  "theme_color": "#052b22",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" }
+  ]
+}

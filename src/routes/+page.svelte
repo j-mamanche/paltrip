@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { slide } from 'svelte/transition';
   import { CURRENCIES, fetchExchangeRate, groupCurrencies, currencyFlag } from '$lib/currencies';
+  import { getWallets, buildPaymentRef } from '$lib/wallets';
 
   let creating = $state(false);
   let joining = $state(false);
@@ -27,8 +28,10 @@
   const [_us, _ue] = randomSeven();
   let userEmojiSet = $state(_us);
   let userEmoji = $state(_ue);
-  let userPaymentType = $state('breb');
+  let userPaymentCountry = $state('COP');
+  let userPaymentType = $state('nequi');
   let userPaymentNumber = $state('');
+  const userWallets = $derived(getWallets(userPaymentCountry));
 
   // ── Unirse a viaje ────────────────────────────────────────────────────────
   let accessToken = $state('');
@@ -36,8 +39,10 @@
   const [_js, _je] = randomSeven();
   let joinEmojiSet = $state(_js);
   let joinEmoji = $state(_je);
-  let joinPaymentType = $state('breb');
+  let joinPaymentCountry = $state('COP');
+  let joinPaymentType = $state('nequi');
   let joinPaymentNumber = $state('');
+  const joinWallets = $derived(getWallets(joinPaymentCountry));
 
   function reshuffleUserEmojis() {
     const [set] = randomSeven();
@@ -281,28 +286,6 @@
   // ── Shared helpers ────────────────────────────────────────────────────────
   const travelEmojis = ['✈️','🏖️','🏔️','🌊','🏕️','🗺️','🛻','⛺','🎒','🚂','🚢','🏄','🎿','🌴','🗽','🏯'];
 
-  const paymentTypes = [
-    ['nequi', 'Nequi'],
-    ['breb', 'Bre-B'],
-    ['daviplata', 'Daviplata'],
-    ['bancolombia', 'Bancolombia'],
-    ['otro', 'Otro']
-  ] as const;
-
-  const paymentPlaceholders: Record<string, string> = {
-    nequi: 'Número de celular',
-    breb: 'Número de celular',
-    daviplata: 'Número de celular',
-    bancolombia: 'Número de cuenta',
-    otro: 'Tu dato de pago'
-  };
-
-  function buildPaymentRef(type: string, number: string): string | null {
-    if (!number.trim()) return null;
-    if (type === 'otro') return number.trim();
-    const labels: Record<string, string> = { nequi: 'Nequi', breb: 'Bre-B', daviplata: 'Daviplata', bancolombia: 'Bancolombia' };
-    return `${labels[type]}: ${number.trim()}`;
-  }
 
   async function createTrip() {
     if (!tripName.trim() || !userName.trim()) return;
@@ -310,7 +293,7 @@
     try {
       const res = await fetch('/api/trips', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `${tripEmoji} ${tripName.trim()}`, currency, userName: `${userEmoji} ${userName.trim()}`, paymentRef: buildPaymentRef(userPaymentType, userPaymentNumber) })
+        body: JSON.stringify({ name: `${tripEmoji} ${tripName.trim()}`, currency, userName: `${userEmoji} ${userName.trim()}`, paymentRef: buildPaymentRef(userWallets.find(w => w.id === userPaymentType), userPaymentType, userPaymentNumber) })
       });
       if (!res.ok) throw new Error((await res.json()).message ?? await res.text());
       const { trip, member } = await res.json();
@@ -329,7 +312,7 @@
     try {
       const res = await fetch('/api/trips/join', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: accessToken.trim(), name: `${joinEmoji} ${joinName.trim()}`, paymentRef: buildPaymentRef(joinPaymentType, joinPaymentNumber) })
+        body: JSON.stringify({ access_token: accessToken.trim(), name: `${joinEmoji} ${joinName.trim()}`, paymentRef: buildPaymentRef(joinWallets.find(w => w.id === joinPaymentType), joinPaymentType, joinPaymentNumber) })
       });
       if (!res.ok) throw new Error((await res.json()).message ?? await res.text());
       const { trip, member } = await res.json();
@@ -348,7 +331,7 @@
 
     <div class="text-center space-y-2">
       <h1 class="font-display font-bold text-5xl tracking-tight text-stone-50">Pa'l Trip</h1>
-      <p class="text-stone-500 text-sm">Pa'l Trip y Pa'l Gasto.</p>
+      <p class="text-stone-500 text-sm">Organiza y divide los gastos de tu grupo.</p>
     </div>
 
     {#if error}
@@ -408,7 +391,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <h2 class="font-display font-semibold text-stone-50 text-base leading-tight">Pa'l Gasto</h2>
-            <p class="text-stone-500 text-xs mt-0.5">Calculadora rápida, sin registrar nada.</p>
+            <p class="text-stone-500 text-xs mt-0.5">Divide la cuenta fácil y rápido.</p>
           </div>
           <span class="text-2xl font-light leading-none transition-all duration-200
             {activeSection === 'split' ? 'rotate-45 text-emerald-400' : 'text-stone-600'}">+</span>
@@ -496,51 +479,29 @@
 
               <!-- Porciones: selector por persona -->
               {#if calcMode === 'weighted' && parseAmount(calcTotalStr) > 0}
-                <div class="space-y-4" transition:slide={{ duration: 140 }}>
+                <div class="space-y-3" transition:slide={{ duration: 140 }}>
                   {#each calcPeople as p}
                     {@const wSum = calcPeople.reduce((s, x) => s + x.weight, 0)}
-                    <div class="space-y-2">
+                    <div class="space-y-1.5">
                       <div class="flex justify-between px-0.5">
                         <span class="text-sm text-stone-300 font-medium">{p.name}</span>
-                        <span class="text-sm font-semibold text-stone-200">{fmtNum(calcGrand * p.weight / wSum, calcAmtCurrency)}</span>
+                        <div class="flex items-center gap-2">
+                          <span class="text-[11px] text-stone-500 tabular-nums">{p.weight}×</span>
+                          <span class="text-sm font-semibold text-stone-200">{fmtNum(calcGrand * p.weight / wSum, calcAmtCurrency)}</span>
+                        </div>
                       </div>
-                      <div class="flex items-center gap-3">
-                        <div class="relative flex-1 pb-4">
-                          <div class="relative h-1 rounded-full bg-stone-700">
-                            <div class="absolute inset-y-0 left-0 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/40 transition-[width] duration-75"
-                                 style="width: {((Math.min(p.weight, 4) - 1) / 3) * 100}%"></div>
-                            {#each [1, 2, 3, 4] as tick}
-                              <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full transition-colors pointer-events-none"
-                                   style="left: {((tick - 1) / 3) * 100}%"
-                                   class:bg-emerald-400={p.weight >= tick - 0.1}
-                                   class:bg-stone-600={p.weight < tick - 0.1}
-                              ></div>
-                            {/each}
-                          </div>
-                          <div class="flex justify-between mt-1.5 text-[9px] leading-none">
-                            {#each [1, 2, 3, 4] as tick}
-                              <span class="transition-colors"
-                                    class:text-emerald-400={p.weight >= tick - 0.1}
-                                    class:text-stone-600={p.weight < tick - 0.1}
-                              >{tick}×</span>
-                            {/each}
-                          </div>
-                          <input
-                            type="range" min="1" max="4" step="0.25"
-                            value={Math.min(p.weight, 4)}
-                            oninput={(e) => calcSetWeight(p.id, parseFloat((e.target as HTMLInputElement).value))}
-                            class="absolute inset-0 w-full opacity-0 cursor-pointer h-6 -top-2"
-                          />
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                          <input
-                            type="number" min="1" max="4" step="0.25"
-                            value={p.weight}
-                            oninput={(e) => calcSetWeight(p.id, Math.max(1, Math.min(4, parseFloat((e.target as HTMLInputElement).value) || 1)))}
-                            class="input w-10 py-1 text-sm text-center tabular-nums"
-                          />
-                          <span class="text-stone-500 text-xs">×</span>
-                        </div>
+                      <datalist id="ticks-{p.id}">
+                        {#each [1, 2, 3, 4] as t}<option value={t}></option>{/each}
+                      </datalist>
+                      <input
+                        type="range" min="1" max="4" step="0.25"
+                        list="ticks-{p.id}"
+                        value={Math.min(p.weight, 4)}
+                        oninput={(e) => calcSetWeight(p.id, parseFloat((e.target as HTMLInputElement).value))}
+                        class="w-full cursor-pointer accent-emerald-500 h-1.5 block"
+                      />
+                      <div class="flex justify-between text-[9px] text-stone-600 px-0.5">
+                        {#each [1, 2, 3, 4] as t}<span>{t}×</span>{/each}
                       </div>
                     </div>
                   {/each}
@@ -762,7 +723,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <h2 class="font-display font-semibold text-stone-50 text-base leading-tight">Pa'l Trip</h2>
-            <p class="text-stone-500 text-xs mt-0.5">Arma el grupo y pon las reglas.</p>
+            <p class="text-stone-500 text-xs mt-0.5">Arma tu grupo y lleva el control de gastos.</p>
           </div>
           <span class="text-2xl font-light leading-none transition-all duration-200
             {activeSection === 'create' ? 'rotate-45 text-brand-400' : 'text-stone-600'}">+</span>
@@ -795,15 +756,22 @@
             <div class="space-y-2">
               <p class="text-xs text-stone-500 font-medium">Billetera o cuenta <span class="text-stone-700">(opcional)</span></p>
               <div class="flex gap-2">
-                <select bind:value={userPaymentType} class="input !w-auto shrink-0 text-sm">
-                  {#each paymentTypes as [val, label]}
-                    <option value={val}>{label}</option>
+                <select bind:value={userPaymentCountry}
+                        onchange={() => { userPaymentType = getWallets(userPaymentCountry)[0].id; userPaymentNumber = ''; }}
+                        class="input !w-auto shrink-0 text-sm">
+                  {#each CURRENCIES as c}
+                    <option value={c.code}>{currencyFlag(c.code)} {c.code}</option>
                   {/each}
                 </select>
-                <div class="flex-1 min-w-0">
-                  <input bind:value={userPaymentNumber} placeholder={paymentPlaceholders[userPaymentType]} class="input" type="text" />
-                </div>
+                <select bind:value={userPaymentType} class="input !w-auto shrink-0 text-sm">
+                  {#each userWallets as w}
+                    <option value={w.id}>{w.label}</option>
+                  {/each}
+                </select>
               </div>
+              <input bind:value={userPaymentNumber}
+                     placeholder={userWallets.find(w => w.id === userPaymentType)?.placeholder ?? 'Tu dato de pago'}
+                     class="input" type="text" />
             </div>
 
             <div class="h-px bg-brand-900/40"></div>
@@ -887,15 +855,22 @@
             <div class="space-y-2">
               <p class="text-xs text-stone-500 font-medium">Billetera o cuenta <span class="text-stone-700">(opcional)</span></p>
               <div class="flex gap-2">
-                <select bind:value={joinPaymentType} class="input !w-auto shrink-0 text-sm">
-                  {#each paymentTypes as [val, label]}
-                    <option value={val}>{label}</option>
+                <select bind:value={joinPaymentCountry}
+                        onchange={() => { joinPaymentType = getWallets(joinPaymentCountry)[0].id; joinPaymentNumber = ''; }}
+                        class="input !w-auto shrink-0 text-sm">
+                  {#each CURRENCIES as c}
+                    <option value={c.code}>{currencyFlag(c.code)} {c.code}</option>
                   {/each}
                 </select>
-                <div class="flex-1 min-w-0">
-                  <input bind:value={joinPaymentNumber} placeholder={paymentPlaceholders[joinPaymentType]} class="input" type="text" />
-                </div>
+                <select bind:value={joinPaymentType} class="input !w-auto shrink-0 text-sm">
+                  {#each joinWallets as w}
+                    <option value={w.id}>{w.label}</option>
+                  {/each}
+                </select>
               </div>
+              <input bind:value={joinPaymentNumber}
+                     placeholder={joinWallets.find(w => w.id === joinPaymentType)?.placeholder ?? 'Tu dato de pago'}
+                     class="input" type="text" />
             </div>
 
             <div class="h-px bg-stone-700/60"></div>

@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
+  import { supabase } from '$lib/supabase';
   import { fade, fly, slide } from 'svelte/transition';
   import type { PageData } from './$types';
   import type { TripUser } from '$lib/types';
   import { CURRENCIES, fetchExchangeRate, groupCurrencies, currencyFlag } from '$lib/currencies';
+  import { getWallets, buildPaymentRef } from '$lib/wallets';
 
   let { data }: { data: PageData } = $props();
 
@@ -107,7 +109,59 @@
     expCurrency = data.trip.currency;
     const memberStatus = data.members.find((m) => m.id === currentUserId)?.status ?? 'active';
     localStorage.setItem('pal_last_trip', JSON.stringify({ id: data.trip.id, name: data.trip.name, status: memberStatus }));
+
+    const channel = supabase
+      .channel(`trip-${data.trip.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `trip_id=eq.${data.trip.id}` }, () => invalidateAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_users', filter: `trip_id=eq.${data.trip.id}` }, () => invalidateAll())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   });
+
+  // ── Edición de perfil propio ──────────────────────────────────────────────
+  let editingProfile = $state(false);
+  let editEmoji = $state('');
+  let editName = $state('');
+  let editPayCountry = $state('COP');
+  let editPayType = $state('nequi');
+  let editPayNumber = $state('');
+  let savingProfile = $state(false);
+  const editWallets = $derived(getWallets(editPayCountry));
+
+  const EMOJI_POOL_TRIP = [
+    '😎','🤠','🥷','🧙','🦸','🧑‍🚀','🧑‍🎤','🧑‍🍳','🤹','🧗',
+    '🦁','🐻','🦊','🐼','🦄','🐸','🐯','🐺','🦅','🐧',
+    '🦋','🐙','🌈','⭐','🌊','🔥','💎','⚡','🌵','🎩',
+  ];
+
+  function startEditProfile() {
+    const m = currentMember;
+    if (!m) return;
+    const { avatar, displayName } = splitMemberName(m.name);
+    editEmoji = avatar ?? '';
+    editName = displayName;
+    editPayCountry = 'COP';
+    editPayType = editWallets[0]?.id ?? 'otro';
+    editPayNumber = m.payment_ref ?? '';
+    editingProfile = true;
+  }
+
+  async function saveProfile() {
+    savingProfile = true;
+    const name = editEmoji ? `${editEmoji} ${editName.trim()}` : editName.trim();
+    const wallet = editWallets.find(w => w.id === editPayType);
+    const payment_ref = buildPaymentRef(wallet, editPayType, editPayNumber);
+    try {
+      await fetch(`/api/trips/${data.trip.id}/members/${currentUserId}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ name, payment_ref })
+      });
+      editingProfile = false;
+      await invalidateAll();
+    } finally { savingProfile = false; }
+  }
 
   async function onExpCurrencyChange(newCurrency: string) {
     expCurrency = newCurrency;
@@ -525,16 +579,28 @@
           {/if}
         </p>
       </div>
-      <button
-        onclick={copyToken}
-        class="shrink-0 flex items-center gap-1.5 text-xs bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-400 hover:text-stone-200 px-3 py-1.5 rounded-lg transition-all duration-150 active:scale-95"
-      >
-        {#if copiedToken}
-          <span class="text-emerald-400 font-medium" in:fade={{ duration: 150 }}>¡Copiado!</span>
-        {:else}
-          <span>Compartir viaje</span>
-        {/if}
-      </button>
+      <div class="flex items-center gap-2 shrink-0">
+        <button
+          onclick={() => invalidateAll()}
+          class="flex items-center justify-center w-8 h-8 bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-400 hover:text-stone-200 rounded-lg transition-all duration-150 active:scale-95"
+          title="Recargar"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <polyline points="3 3 3 8 8 8"/>
+          </svg>
+        </button>
+        <button
+          onclick={copyToken}
+          class="flex items-center gap-1.5 text-xs bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-400 hover:text-stone-200 px-3 py-1.5 rounded-lg transition-all duration-150 active:scale-95"
+        >
+          {#if copiedToken}
+            <span class="text-emerald-400 font-medium" in:fade={{ duration: 150 }}>¡Copiado!</span>
+          {:else}
+            <span>Compartir viaje</span>
+          {/if}
+        </button>
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -853,7 +919,12 @@
                   {/if}
                 </div>
               </div>
-              {#if isAdmin && m.id !== currentUserId}
+              {#if m.id === currentUserId}
+                <button
+                  onclick={startEditProfile}
+                  class="shrink-0 text-xs text-stone-600 hover:text-stone-300 bg-stone-800 hover:bg-stone-700 border border-stone-700 px-2.5 py-1.5 rounded-lg transition-all"
+                >Editar</button>
+              {:else if isAdmin}
                 <div class="flex gap-1 shrink-0">
                   <button
                     onclick={() => changeRole(m.id, m.role === 'admin' ? 'member' : 'admin')}
@@ -866,6 +937,53 @@
                 </div>
               {/if}
             </div>
+
+            {#if m.id === currentUserId && editingProfile}
+              <div transition:slide={{ duration: 160 }} class="mt-3 pt-3 border-t border-stone-800 space-y-3">
+                <div class="space-y-2">
+                  <p class="text-xs text-stone-500 font-medium">Tu nombre</p>
+                  <div class="flex gap-2">
+                    <div class="flex flex-wrap gap-1 shrink-0">
+                      {#each EMOJI_POOL_TRIP.slice(0, 7) as em}
+                        <button type="button" onclick={() => (editEmoji = em)}
+                          class="w-8 h-8 rounded-lg text-base flex items-center justify-center transition shrink-0
+                            {editEmoji === em ? 'bg-brand-500/25 ring-2 ring-brand-500/60' : 'bg-stone-800 hover:bg-stone-700'}"
+                        >{em}</button>
+                      {/each}
+                    </div>
+                    <input bind:value={editName} placeholder="Tu nombre" class="input flex-1" type="text" />
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <p class="text-xs text-stone-500 font-medium">Billetera o cuenta <span class="text-stone-700">(opcional)</span></p>
+                  <div class="flex gap-2">
+                    <select bind:value={editPayCountry}
+                            onchange={() => { editPayType = getWallets(editPayCountry)[0].id; editPayNumber = ''; }}
+                            class="input !w-auto shrink-0 text-sm">
+                      {#each CURRENCIES as c}
+                        <option value={c.code}>{currencyFlag(c.code)} {c.code}</option>
+                      {/each}
+                    </select>
+                    <select bind:value={editPayType} class="input !w-auto shrink-0 text-sm">
+                      {#each editWallets as w}
+                        <option value={w.id}>{w.label}</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <input bind:value={editPayNumber}
+                         placeholder={editWallets.find(w => w.id === editPayType)?.placeholder ?? 'Tu dato de pago'}
+                         class="input" type="text" />
+                </div>
+                <div class="flex gap-2">
+                  <button onclick={saveProfile} disabled={savingProfile || !editName.trim()}
+                    class="btn-primary flex-1 py-2 text-sm disabled:opacity-40"
+                  >{savingProfile ? 'Guardando…' : 'Guardar'}</button>
+                  <button onclick={() => (editingProfile = false)}
+                    class="btn-secondary px-4 py-2 text-sm"
+                  >Cancelar</button>
+                </div>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>

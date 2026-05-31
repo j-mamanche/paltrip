@@ -1,15 +1,29 @@
 import { json, error } from '@sveltejs/kit';
 import { query, supabase } from '$lib/server/db';
 import { requireAdmin, requireMember, getMemberId } from '$lib/server/auth';
+import { validateText, validateOptionalText } from '$lib/server/validate';
 import type { RequestHandler } from './$types';
 
-// PATCH — admin: aprobar solicitud o cambiar rol
+// PATCH — self-edit (name/payment_ref) o admin (status/role)
 export const PATCH: RequestHandler = async ({ params, request }) => {
   const { tripId, memberId } = params;
   const callerId = getMemberId(request);
-  await requireAdmin(tripId, callerId);
 
   const body = await request.json();
+
+  // Self-edit: el miembro actualiza su propio nombre y/o billetera
+  if (callerId === memberId && (body.name !== undefined || 'payment_ref' in body)) {
+    await requireMember(tripId, callerId);
+    const updates: Record<string, string | null> = {};
+    if (body.name?.trim()) updates.name = validateText(body.name, 'Nombre', 100);
+    if ('payment_ref' in body) updates.payment_ref = validateOptionalText(body.payment_ref, 200);
+    const member = await query(() =>
+      supabase.from('trip_users').update(updates).eq('id', memberId).eq('trip_id', tripId).select().single()
+    );
+    return json(member);
+  }
+
+  await requireAdmin(tripId, callerId);
 
   if (body.status === 'active') {
     // Aprobar solicitud pendiente
