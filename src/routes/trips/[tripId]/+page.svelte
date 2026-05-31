@@ -105,6 +105,7 @@
     expPaidBy = currentUserId ?? data.members[0]?.id ?? '';
     expParticipants = data.members.map((m) => m.id);
     expCurrency = data.trip.currency;
+    localStorage.setItem('pal_last_trip', JSON.stringify({ id: data.trip.id, name: data.trip.name }));
   });
 
   async function onExpCurrencyChange(newCurrency: string) {
@@ -1163,16 +1164,23 @@
                         <span class="text-sm font-semibold text-stone-300">{fmt(getRawAmount() * (memberWeights[m.id] ?? 1) / wSum)}</span>
                       {/if}
                     </div>
-                    <div class="flex gap-1.5">
-                      {#each [1, 2, 3, 4] as n}
-                        <button
-                          onclick={() => { memberWeights = { ...memberWeights, [m.id]: n }; }}
-                          class="flex-1 py-2 rounded-xl text-sm font-semibold border transition-all duration-100
-                            {(memberWeights[m.id] ?? 1) === n
-                              ? 'bg-brand-500/20 border-brand-600/50 text-brand-300'
-                              : 'bg-stone-800 border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-600'}"
-                        >{n}×</button>
-                      {/each}
+                    <div class="flex items-center gap-2.5">
+                      <input
+                        type="range" min="1" max="3" step="0.25"
+                        value={Math.min(memberWeights[m.id] ?? 1, 3)}
+                        oninput={(e) => { memberWeights = { ...memberWeights, [m.id]: parseFloat((e.target as HTMLInputElement).value) }; }}
+                        class="flex-1 h-1.5 cursor-pointer"
+                        style="accent-color: #18b087"
+                      />
+                      <div class="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number" min="1" step="0.25"
+                          value={memberWeights[m.id] ?? 1}
+                          oninput={(e) => { const v = parseFloat((e.target as HTMLInputElement).value); memberWeights = { ...memberWeights, [m.id]: Math.max(1, v || 1) }; }}
+                          class="input w-16 py-1 text-sm text-center tabular-nums"
+                        />
+                        <span class="text-stone-500 text-xs">×</span>
+                      </div>
                     </div>
                   </div>
                 {/each}

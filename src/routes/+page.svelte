@@ -51,6 +51,7 @@
   }
 
   let error = $state('');
+  let lastTrip = $state<{ id: string; name: string } | null>(null);
 
   // ── Calculadora ───────────────────────────────────────────────────────────
   type CalcMode = 'equal' | 'weighted' | 'itemized';
@@ -238,9 +239,19 @@
   onMount(() => {
     const joinCode = new URLSearchParams(window.location.search).get('join');
     if (joinCode) {
+      const knownTripId = localStorage.getItem(`pal_token_${joinCode}`);
+      if (knownTripId && localStorage.getItem(`trip_${knownTripId}_user`)) {
+        goto(`/trips/${knownTripId}`);
+        return;
+      }
       accessToken = joinCode;
       activeSection = 'join';
       window.history.replaceState({}, '', '/');
+      return;
+    }
+    const raw = localStorage.getItem('pal_last_trip');
+    if (raw) {
+      try { lastTrip = JSON.parse(raw); } catch { /* noop */ }
     }
   });
 
@@ -281,6 +292,8 @@
       if (!res.ok) throw new Error((await res.json()).message ?? await res.text());
       const { trip, member } = await res.json();
       localStorage.setItem(`trip_${trip.id}_user`, member.id);
+      localStorage.setItem('pal_last_trip', JSON.stringify({ id: trip.id, name: trip.name }));
+      localStorage.setItem(`pal_token_${trip.access_token}`, trip.id);
       goto(`/trips/${trip.id}`);
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Error al crear el viaje';
@@ -298,6 +311,8 @@
       if (!res.ok) throw new Error((await res.json()).message ?? await res.text());
       const { trip, member } = await res.json();
       localStorage.setItem(`trip_${trip.id}_user`, member.id);
+      localStorage.setItem('pal_last_trip', JSON.stringify({ id: trip.id, name: trip.name }));
+      localStorage.setItem(`pal_token_${accessToken.trim()}`, trip.id);
       goto(`/trips/${trip.id}`);
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Error al entrar al viaje';
@@ -315,6 +330,19 @@
 
     {#if error}
       <div class="bg-red-950 border border-red-800/60 text-red-300 text-sm px-4 py-3 rounded-xl">{error}</div>
+    {/if}
+
+    {#if lastTrip}
+      <a href="/trips/{lastTrip.id}"
+         class="flex items-center gap-3 px-4 py-3 rounded-2xl bg-brand-950/50 border border-brand-800/60
+                text-stone-200 hover:bg-brand-900/50 transition-colors duration-150 group">
+        <span class="text-xl">✈️</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-stone-500">Continuar en</p>
+          <p class="text-sm font-semibold font-display truncate">{lastTrip.name}</p>
+        </div>
+        <span class="text-stone-600 group-hover:text-brand-400 transition-colors">→</span>
+      </a>
     {/if}
 
     <div class="space-y-3">
@@ -434,16 +462,22 @@
                         <span class="text-sm text-stone-300 font-medium">{p.name}</span>
                         <span class="text-sm font-semibold text-stone-200">{fmtNum(calcGrand * p.weight / wSum, calcAmtCurrency)}</span>
                       </div>
-                      <div class="flex gap-1.5">
-                        {#each [1, 2, 3, 4] as n}
-                          <button
-                            onclick={() => calcSetWeight(p.id, n)}
-                            class="flex-1 py-1.5 rounded-xl text-xs font-semibold border transition
-                              {p.weight === n
-                                ? 'bg-emerald-500/20 border-emerald-600/50 text-emerald-300'
-                                : 'bg-stone-800 border-stone-700 text-stone-500 hover:text-stone-300'}"
-                          >{n}×</button>
-                        {/each}
+                      <div class="flex items-center gap-2.5">
+                        <input
+                          type="range" min="1" max="3" step="0.25"
+                          value={Math.min(p.weight, 3)}
+                          oninput={(e) => calcSetWeight(p.id, parseFloat((e.target as HTMLInputElement).value))}
+                          class="flex-1 h-1.5 accent-emerald-500 cursor-pointer"
+                        />
+                        <div class="flex items-center gap-1 shrink-0">
+                          <input
+                            type="number" min="1" step="0.25"
+                            value={p.weight}
+                            oninput={(e) => calcSetWeight(p.id, Math.max(1, parseFloat((e.target as HTMLInputElement).value) || 1))}
+                            class="input w-16 py-1 text-sm text-center tabular-nums"
+                          />
+                          <span class="text-stone-500 text-xs">×</span>
+                        </div>
                       </div>
                     </div>
                   {/each}
