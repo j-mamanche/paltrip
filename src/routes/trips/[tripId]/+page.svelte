@@ -660,7 +660,7 @@
             <div class="min-w-0">
               <div class="font-medium text-stone-100 truncate">{balance.name}</div>
               <div class="text-xs mt-0.5 {balance.net > 0 ? 'text-emerald-500' : balance.net < 0 ? 'text-red-500' : 'text-stone-600'}">
-                {balance.net > 0 ? 'Le deben' : balance.net < 0 ? 'Debe al grupo' : 'Al día'}
+                {balance.net > 0 ? 'A favor' : balance.net < 0 ? 'En deuda' : 'Al día'}
               </div>
             </div>
             <div class="font-bold text-xl shrink-0 {balance.net > 0 ? 'text-emerald-400' : balance.net < 0 ? 'text-red-400' : 'text-stone-600'}">

@@ -496,27 +496,48 @@
 
               <!-- Porciones: selector por persona -->
               {#if calcMode === 'weighted' && parseAmount(calcTotalStr) > 0}
-                <div class="space-y-3" transition:slide={{ duration: 140 }}>
+                <div class="space-y-4" transition:slide={{ duration: 140 }}>
                   {#each calcPeople as p}
                     {@const wSum = calcPeople.reduce((s, x) => s + x.weight, 0)}
-                    <div class="space-y-1.5">
+                    <div class="space-y-2">
                       <div class="flex justify-between px-0.5">
                         <span class="text-sm text-stone-300 font-medium">{p.name}</span>
                         <span class="text-sm font-semibold text-stone-200">{fmtNum(calcGrand * p.weight / wSum, calcAmtCurrency)}</span>
                       </div>
-                      <div class="flex items-center gap-2.5">
-                        <input
-                          type="range" min="1" max="3" step="0.25"
-                          value={Math.min(p.weight, 3)}
-                          oninput={(e) => calcSetWeight(p.id, parseFloat((e.target as HTMLInputElement).value))}
-                          class="flex-1 h-1.5 accent-emerald-500 cursor-pointer"
-                        />
+                      <div class="flex items-center gap-3">
+                        <div class="relative flex-1 pb-4">
+                          <div class="relative h-1 rounded-full bg-stone-700">
+                            <div class="absolute inset-y-0 left-0 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/40 transition-[width] duration-75"
+                                 style="width: {((Math.min(p.weight, 4) - 1) / 3) * 100}%"></div>
+                            {#each [1, 2, 3, 4] as tick}
+                              <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full transition-colors pointer-events-none"
+                                   style="left: {((tick - 1) / 3) * 100}%"
+                                   class:bg-emerald-400={p.weight >= tick - 0.1}
+                                   class:bg-stone-600={p.weight < tick - 0.1}
+                              ></div>
+                            {/each}
+                          </div>
+                          <div class="flex justify-between mt-1.5 text-[9px] leading-none">
+                            {#each [1, 2, 3, 4] as tick}
+                              <span class="transition-colors"
+                                    class:text-emerald-400={p.weight >= tick - 0.1}
+                                    class:text-stone-600={p.weight < tick - 0.1}
+                              >{tick}×</span>
+                            {/each}
+                          </div>
+                          <input
+                            type="range" min="1" max="4" step="0.25"
+                            value={Math.min(p.weight, 4)}
+                            oninput={(e) => calcSetWeight(p.id, parseFloat((e.target as HTMLInputElement).value))}
+                            class="absolute inset-0 w-full opacity-0 cursor-pointer h-6 -top-2"
+                          />
+                        </div>
                         <div class="flex items-center gap-1 shrink-0">
                           <input
-                            type="number" min="1" step="0.25"
+                            type="number" min="1" max="4" step="0.25"
                             value={p.weight}
-                            oninput={(e) => calcSetWeight(p.id, Math.max(1, parseFloat((e.target as HTMLInputElement).value) || 1))}
-                            class="input w-12 py-1 text-sm text-center tabular-nums"
+                            oninput={(e) => calcSetWeight(p.id, Math.max(1, Math.min(4, parseFloat((e.target as HTMLInputElement).value) || 1)))}
+                            class="input w-10 py-1 text-sm text-center tabular-nums"
                           />
                           <span class="text-stone-500 text-xs">×</span>
                         </div>
